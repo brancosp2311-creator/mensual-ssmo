@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Dashboard SSMO — Ingresos Accidentes</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g1:#0d7a2e;--g2:#13C045;--g3:#4ad475;--g4:#d4f4de;
+  --red:#c0392b;--red-l:#fdf0ef;
+  --orange:#e67e22;--orange-l:#fef6ee;
+  --blue:#1a56a0;--blue-l:#eaf1fb;
+  --bg:#f3f5f8;--card:#fff;--border:#e2e6ea;
+  --text:#1a1d23;--muted:#6b7280;--light:#9ca3af;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.06);
+  --shadow-md:0 4px 16px rgba(0,0,0,.1);
+}
+html{scroll-behavior:smooth}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+
+/* ══ TOPBAR ══════════════════════════════════════════════════════════════ */
+#topbar{
+  background:linear-gradient(135deg,var(--g1) 0%,var(--g2) 100%);
+  padding:0 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  min-height:56px;box-shadow:0 2px 12px rgba(13,122,46,.4);position:sticky;top:0;z-index:100;
+}
+#topbar-logo{
+  color:#fff;font-size:.95rem;font-weight:800;letter-spacing:-.3px;
+  display:flex;align-items:center;gap:8px;margin-right:6px;
+}
+#topbar-logo span{background:rgba(255,255,255,.18);padding:3px 10px;border-radius:6px;font-size:.8rem;font-weight:700}
+.tb-label{color:rgba(255,255,255,.75);font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+#url-input{
+  width:300px;padding:6px 12px;border:1.5px solid rgba(255,255,255,.3);border-radius:8px;
+  background:rgba(255,255,255,.15);color:#fff;font-size:.8rem;outline:none;
+  transition:border-color .2s;
+}
+#url-input:focus{border-color:rgba(255,255,255,.7)}
+#url-input::placeholder{color:rgba(255,255,255,.45)}
+.tb-group{display:flex;flex-direction:column;gap:2px}
+select.tb-select{
+  padding:5px 10px;border:1.5px solid rgba(255,255,255,.3);border-radius:8px;
+  background:rgba(255,255,255,.15);color:#fff;font-size:.8rem;outline:none;
+  cursor:pointer;
+}
+select.tb-select option{background:#0d7a2e;color:#fff}
+#btn-load{
+  background:#fff;color:var(--g1);border:none;cursor:pointer;
+  padding:8px 20px;border-radius:8px;font-weight:700;font-size:.82rem;
+  box-shadow:0 2px 6px rgba(0,0,0,.15);transition:all .15s;white-space:nowrap;
+  display:flex;align-items:center;gap:6px;
+}
+#btn-load:hover{background:#f0fdf4;transform:translateY(-1px);box-shadow:0 4px 10px rgba(0,0,0,.18)}
+#btn-load:active{transform:none}
+#btn-load:disabled{opacity:.55;cursor:not-allowed;transform:none}
+.spin{width:14px;height:14px;border:2.5px solid rgba(13,122,46,.25);border-top-color:var(--g1);border-radius:50%;animation:spin .65s linear infinite;display:none}
+#status{color:rgba(255,255,255,.85);font-size:.75rem;max-width:220px}
+
+/* ══ TABS ════════════════════════════════════════════════════════════════ */
+#tabnav{
+  background:var(--card);border-bottom:1px solid var(--border);
+  display:none;padding:0 20px;gap:2px;overflow-x:auto;
+}
+.ttab{
+  background:none;border:none;cursor:pointer;padding:13px 18px;font-size:.82rem;
+  font-weight:600;color:var(--muted);border-bottom:3px solid transparent;
+  white-space:nowrap;transition:all .15s;letter-spacing:-.1px;
+}
+.ttab:hover{color:var(--g1);background:var(--g4)}
+.ttab.on{color:var(--g1);border-bottom-color:var(--g2);background:var(--g4)}
+.badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--red);color:#fff;border-radius:20px;font-size:.65rem;
+  font-weight:700;padding:1px 6px;margin-left:5px;min-width:18px;
+}
+
+/* ══ LAYOUT ══════════════════════════════════════════════════════════════ */
+#main{max-width:1180px;margin:24px auto 80px;padding:0 16px}
+.sec{display:none}
+.sec.on{display:block}
+
+/* ══ WELCOME ═════════════════════════════════════════════════════════════ */
+#welcome{text-align:center;padding:56px 24px}
+#welcome-icon{font-size:3rem;margin-bottom:12px}
+#welcome h2{font-size:1.5rem;font-weight:800;color:var(--g1);margin-bottom:8px}
+#welcome p{color:var(--muted);margin-bottom:6px}
+.setup-card{
+  background:var(--card);border-radius:12px;padding:28px;margin:24px auto;max-width:520px;
+  box-shadow:var(--shadow);border:1px solid var(--border);text-align:left;
+}
+.setup-card h3{font-size:.85rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:14px}
+.step{display:flex;gap:12px;margin-bottom:10px;align-items:flex-start}
+.step-num{
+  background:var(--g2);color:#fff;border-radius:50%;width:22px;height:22px;min-width:22px;
+  display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;margin-top:1px;
+}
+.step-text{font-size:.84rem;color:var(--text);line-height:1.5}
+.step-text code{background:var(--bg);padding:1px 6px;border-radius:4px;font-size:.78rem;color:var(--g1)}
+.file-alert{
+  background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;
+  margin:20px auto;max-width:520px;font-size:.82rem;color:#92400e;display:none;
+}
+
+/* ══ CARDS ═══════════════════════════════════════════════════════════════ */
+.card{background:var(--card);border-radius:12px;padding:24px;margin-bottom:16px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.card-head{
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:2px solid var(--g4);padding-bottom:12px;margin-bottom:18px;
+}
+.card-title{font-size:.9rem;font-weight:700;color:var(--g1)}
+.card-meta{font-size:.75rem;color:var(--light)}
+
+/* ══ KPI ROW ══════════════════════════════════════════════════════════════ */
+.krow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
+.kpi{border-radius:10px;padding:16px;border:1px solid var(--border)}
+.kpi-l{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px}
+.kpi-v{font-size:1.9rem;font-weight:800;line-height:1.1}
+.kpi-s{font-size:.68rem;color:var(--light);margin-top:3px}
+.k-green{background:var(--g4);border-color:#a7f3c0}
+.k-green .kpi-v{color:var(--g1)}
+.k-red{background:var(--red-l);border-color:#f5c6c2}
+.k-red .kpi-v{color:var(--red)}
+.k-orange{background:var(--orange-l);border-color:#f5d9b8}
+.k-orange .kpi-v{color:var(--orange)}
+.k-blue{background:var(--blue-l);border-color:#b8d0f0}
+.k-blue .kpi-v{color:var(--blue)}
+.k-gray{background:var(--bg);border-color:var(--border)}
+.k-gray .kpi-v{color:var(--text)}
+
+/* ══ FLOW ═════════════════════════════════════════════════════════════════ */
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px}
+.fbox{border-radius:10px;padding:14px 20px;text-align:center;min-width:130px;border:1px solid transparent}
+.fbox-l{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);margin-bottom:4px}
+.fbox-name{font-size:.82rem;font-weight:700}
+.fbox-n{font-size:1.8rem;font-weight:800;line-height:1.1}
+.farrow{color:var(--g2);font-size:1.4rem;font-weight:300}
+.match-bar{background:#e5e7eb;border-radius:20px;height:20px;overflow:hidden;margin:8px 0 14px}
+.match-fill{height:100%;border-radius:20px;display:flex;align-items:center;padding-left:10px;
+            font-size:.72rem;font-weight:700;color:#fff;transition:width .8s cubic-bezier(.4,0,.2,1)}
+
+/* ══ TWO-COL ══════════════════════════════════════════════════════════════ */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.chart-wrap{background:var(--bg);border-radius:8px;padding:14px;height:260px;position:relative}
+.chart-wrap canvas{max-height:232px}
+
+/* ══ TABLES ══════════════════════════════════════════════════════════════ */
+.tscroll{overflow-x:auto;border-radius:8px;box-shadow:0 0 0 1px var(--border)}
+.dt{width:100%;border-collapse:collapse;font-size:.79rem}
+.dt thead tr{background:var(--g1)}
+.dt thead th{color:#fff;padding:9px 12px;text-align:left;font-size:.74rem;font-weight:600;white-space:nowrap}
+.dt tbody td{padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text)}
+.dt tbody tr:nth-child(even) td{background:#fafbfc}
+.dt tbody tr:hover td{background:var(--g4)!important}
+.dt tfoot tr{background:var(--g4);font-weight:700}
+.dt tfoot td{padding:9px 12px;border-top:2px solid var(--g2);font-size:.8rem}
+.row-nm td{background:var(--red-l)!important}
+
+/* ══ FILTERS ══════════════════════════════════════════════════════════════ */
+.frow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.frow label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.fi{padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:.81rem;background:var(--card);outline:none;color:var(--text)}
+.fi:focus{border-color:var(--g2);box-shadow:0 0 0 3px rgba(19,192,69,.12)}
+
+/* ══ HOSP SELECTOR ═══════════════════════════════════════════════════════ */
+.hosp-pick{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.hosp-pick label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+#hosp-sel{
+  padding:8px 14px;border:1.5px solid var(--border);border-radius:8px;
+  background:var(--card);font-size:.83rem;color:var(--text);outline:none;
+  min-width:280px;cursor:pointer;
+}
+#hosp-sel:focus{border-color:var(--g2);box-shadow:0 0 0 3px rgba(19,192,69,.12)}
+
+/* ══ ALERT ════════════════════════════════════════════════════════════════ */
+.alert{padding:12px 16px;border-radius:8px;margin-bottom:14px;font-size:.83rem;line-height:1.5}
+.a-ok{background:var(--g4);border-left:4px solid var(--g2);color:var(--g1)}
+.a-warn{background:var(--red-l);border-left:4px solid var(--red);color:var(--red)}
+.a-info{background:var(--blue-l);border-left:4px solid var(--blue);color:var(--blue)}
+
+/* ══ TAGS ═════════════════════════════════════════════════════════════════ */
+.tag{display:inline-block;border-radius:20px;padding:2px 9px;font-size:.7rem;font-weight:700}
+.tag-at{background:var(--g4);color:var(--g1)}
+.tag-tr{background:var(--blue-l);color:var(--blue)}
+.tag-ep{background:var(--orange-l);color:var(--orange)}
+.tag-nm{background:var(--red-l);color:var(--red)}
+
+/* ══ DIVIDER ══════════════════════════════════════════════════════════════ */
+.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+
+/* ══ PRINT BTN ════════════════════════════════════════════════════════════ */
+#btn-print{
+  position:fixed;bottom:22px;right:22px;background:var(--g1);color:#fff;
+  border:none;cursor:pointer;padding:11px 20px;border-radius:24px;font-weight:700;
+  font-size:.82rem;box-shadow:var(--shadow-md);display:none;transition:all .15s;
+  z-index:200;
+}
+#btn-print:hover{background:var(--g2);transform:scale(1.04)}
+
+/* ══ DEBUG ════════════════════════════════════════════════════════════════ */
+#debug-panel{
+  background:#1e1e2e;color:#cdd6f4;border-radius:10px;padding:16px;
+  font-family:monospace;font-size:.75rem;white-space:pre-wrap;word-break:break-all;
+  display:none;margin-top:14px;max-height:300px;overflow:auto;
+}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:720px){
+  .g2{grid-template-columns:1fr}
+  #url-input{width:100%}
+}
+@media print{
+  #topbar,#tabnav,#btn-print{display:none!important}
+  .sec{display:block!important}
+  .card{box-shadow:none;border:1px solid var(--border);page-break-inside:avoid}
+  body{background:#fff}#main{max-width:100%;margin:0;padding:0 6px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ TOPBAR ══════════════════════════════════════════════════════════ -->
+<div id="topbar">
+  <div id="topbar-logo">📋 SSMO <span>Dashboard</span></div>
+
+  <div class="tb-group">
+    <span class="tb-label">Webhook n8n</span>
+    <input id="url-input" type="text"
+      value="https://null2311.app.n8n.cloud/webhook/ssmo-datos"
+      placeholder="https://...app.n8n.cloud/webhook/ssmo-datos">
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">Período</span>
+    <div style="display:flex;gap:6px">
+      <select id="sel-mes" class="tb-select">
+        <option value="1">Ene</option><option value="2">Feb</option>
+        <option value="3">Mar</option><option value="4" selected>Abr</option>
+        <option value="5">May</option><option value="6">Jun</option>
+        <option value="7">Jul</option><option value="8">Ago</option>
+        <option value="9">Sep</option><option value="10">Oct</option>
+        <option value="11">Nov</option><option value="12">Dic</option>
+      </select>
+      <select id="sel-anio" class="tb-select">
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+        <option value="2026" selected>2026</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="btn-load" onclick="cargarDatos()">
+    <div class="spin" id="spin"></div>
+    <span id="btn-txt">⟳ Cargar datos</span>
+  </button>
+
+  <span id="status"></span>
+</div>
+
+<!-- ══ TABS ═══════════════════════════════════════════════════════════ -->
+<nav id="tabnav" style="display:none">
+  <button class="ttab on" id="t-cruce"   onclick="showTab('cruce')">📊 Cruce RUT</button>
+  <button class="ttab"    id="t-nomatch" onclick="showTab('nomatch')">⚠ Sin match<span class="badge" id="nm-badge" style="display:none">0</span></button>
+  <button class="ttab"    id="t-base"    onclick="showTab('base')">📋 Base cruzada</button>
+  <button class="ttab"    id="t-result"  onclick="showTab('result')">✅ Resultado final</button>
+</nav>
+
+<!-- ══ MAIN ═══════════════════════════════════════════════════════════ -->
+<div id="main">
+
+  <!-- WELCOME -->
+  <div id="s-welcome" class="sec on">
+    <div id="welcome">
+      <div id="welcome-icon">🏥</div>
+      <h2>Servicio de Salud Metropolitano Oriente</h2>
+      <p>Dashboard de ingresos de accidentes — conectado a Google Drive vía n8n</p>
+      <p style="color:var(--light);font-size:.82rem">Cada vez que actualices los archivos en Drive, al recargar verás los datos frescos.</p>
+
+      <div id="file-alert" class="file-alert">
+        ⚠ Estás abriendo el archivo desde <strong>file://</strong>. Algunos navegadores bloquean solicitudes externas desde archivos locales.
+        <br>Sube el archivo a <strong>GitHub Pages</strong> o usa un servidor local para que el fetch funcione correctamente.
+      </div>
+
+      <div class="setup-card">
+        <h3>Primeros pasos</h3>
+        <div class="step"><div class="step-num">1</div><div class="step-text">Asegúrate que el workflow <strong>API Datos SSMO</strong> esté <strong>activo</strong> en n8n</div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-text">Selecciona el mes y año del período a visualizar</div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-text">Haz clic en <strong>⟳ Cargar datos</strong> — toma ~15–20 segundos mientras n8n descarga desde Drive</div></div>
+        <div class="step"><div class="step-num">4</div><div class="step-text">Para GitHub Pages: sube este archivo como <code>index.html</code> en un repositorio público</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CRUCE -->
+  <div id="s-cruce" class="sec">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Proceso de cruce — Data.xlsx × Archivo Plano</span>
+        <span class="card-meta" id="cruce-meta"></span>
+      </div>
+      <div class="flow" id="flow"></div>
+      <div id="mbl" style="font-size:.83rem;color:var(--muted);margin-bottom:4px"></div>
+      <div class="match-bar"><div class="match-fill" id="mfill" style="width:0;background:var(--g2)"></div></div>
+    </div>
+
+    <div class="g2">
+      <div class="card">
+        <div class="card-head"><span class="card-title">Siniestros por tipo</span><span class="card-meta" id="tipo-meta"></span></div>
+        <div class="chart-wrap"><canvas id="ch-tipo"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="card-title">Cobertura de match RUT</span></div>
+        <div class="chart-wrap"><canvas id="ch-match"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">Accidentes de trabajo por establecimiento — período</span></div>
+      <div class="chart-wrap" style="height:310px"><canvas id="ch-hosps"></canvas></div>
+    </div>
+
+    <div class="card" id="debug-card" style="display:none">
+      <div class="card-head">
+        <span class="card-title">🔧 Diagnóstico — columnas detectadas</span>
+        <button onclick="toggleDebug()" style="font-size:.75rem;background:none;border:1px solid var(--border);cursor:pointer;padding:4px 10px;border-radius:6px">Ver/ocultar</button>
+      </div>
+      <div id="debug-panel"></div>
+    </div>
+  </div>
+
+  <!-- SIN MATCH -->
+  <div id="s-nomatch" class="sec">
+    <div class="card">
+      <div class="card-head"><span class="card-title">Registros sin match en Archivo Plano</span></div>
+      <div id="nomatch-alert"></div>
+      <div class="frow">
+        <label>Buscar</label>
+        <input class="fi" id="f-nm" type="text" placeholder="RUT, nombre, tipo…" oninput="filterTable('t-nm','f-nm')">
+      </div>
+      <div id="nomatch-tbl"></div>
+    </div>
+  </div>
+
+  <!-- BASE CRUZADA -->
+  <div id="s-base" class="sec">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Base de datos cruzada — todos los registros</span>
+        <span class="card-meta" id="base-meta"></span>
+      </div>
+      <div class="frow">
+        <label>Hospital</label>
+        <select class="fi" id="f-hosp" onchange="renderBase()"><option value="">Todos</option></select>
+        <label>Tipo</label>
+        <select class="fi" id="f-tipo" onchange="renderBase()">
+          <option value="">Todos</option>
+          <option value="Trabajo">Trabajo</option>
+          <option value="Trayecto">Trayecto</option>
+          <option value="Profesional">Enf. Profesional</option>
+        </select>
+        <label>Buscar</label>
+        <input class="fi" id="f-base" type="text" placeholder="Nombre, RUT, mecanismo…" oninput="renderBase()">
+      </div>
+      <div id="base-tbl"></div>
+    </div>
+  </div>
+
+  <!-- RESULTADO -->
+  <div id="s-result" class="sec">
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title" id="res-title">Resumen ejecutivo SSMO</span>
+        <span class="card-meta" id="res-meta"></span>
+      </div>
+      <div class="krow" id="kpi-tot"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">Detalle por establecimiento</span></div>
+      <div class="hosp-pick">
+        <label>Establecimiento</label>
+        <select id="hosp-sel" onchange="renderDetalle()"></select>
+      </div>
+      <div id="hosp-det"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">Tabla consolidada SSMO</span></div>
+      <div id="tbl-kpis"></div>
+      <div style="margin-top:10px;font-size:.72rem;color:var(--light);line-height:1.7">
+        <strong>T.Accidentabilidad</strong> = (AT año / dotación) × 100 &nbsp;·&nbsp;
+        <strong>T.Frecuencia</strong> = (AT año / HH) × 1.000.000 &nbsp;·&nbsp;
+        <strong>T.Gravedad</strong> = (días perdidos / HH) × 1.000 &nbsp;·&nbsp;
+        <strong>T.Siniestralidad</strong> = días perdidos / CTP &nbsp;·&nbsp;
+        HH = dotación × 176 h/mes
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<button id="btn-print" onclick="window.print()">🖨 Imprimir / PDF</button>
+
+<script>
+// ── CONSTANTES ──────────────────────────────────────────────────────────────
+const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MESES_C = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const HORAS_MES = 176;
+
+// ── ESTADO ──────────────────────────────────────────────────────────────────
+let S = { raw: null, cruzados: null, kpis: null, cols: null };
+let charts = {};
+
+// ── HELPERS ─────────────────────────────────────────────────────────────────
+const g  = id => document.getElementById(id);
+const mn = () => MESES[parseInt(g('sel-mes').value)];
+const mc = () => MESES_C[parseInt(g('sel-mes').value)];
+const me = () => parseInt(g('sel-mes').value);
+const an = () => parseInt(g('sel-anio').value);
+
+function setStatus(msg, ok=true){
+  g('status').textContent = msg;
+  g('status').style.color = ok ? 'rgba(255,255,255,.85)' : '#fca5a5';
+}
+
+// Detecta dinámicamente los nombres de columna reales
+function detectCols(dataRow, planoRow) {
+  const find = (obj, patterns) => {
+    if (!obj) return null;
+    const keys = Object.keys(obj);
+    for (const pat of patterns) {
+      const r = typeof pat === 'string'
+        ? keys.find(k => k.toLowerCase() === pat.toLowerCase())
+        : keys.find(k => pat.test(k));
+      if (r) return r;
+    }
+    return null;
+  };
+
+  const d = dataRow || {};
+  const p = planoRow || {};
+
+  return {
+    // Data.xlsx
+    d_rut:    find(d, ['RUT PACIENTE','RUT','Rut','rut',/rut/i]),
+    d_nombre: find(d, ['NombrePaciente','Nombre','NOMBRE',/nombre/i]),
+    d_tipo:   find(d, ['TIPO SINIESTRO INGRESO','TIPO SINIESTRO','Tipo Siniestro',/tipo siniestro/i]),
+    d_ctp:    find(d, ['CTP/STP','CTP','ctp',/ctp/i]),
+    d_fechaP: find(d, ['FECHA PRESENTACION','FECHA INGRESO',/fecha.*presentac/i,/fecha.*ingreso/i]),
+    d_fechaI: find(d, ['FECHA INICIO REPOSO',/fecha.*inicio.*reposo/i,/inicio.*reposo/i]),
+    d_fechaA: find(d, ['FECHA ALTA',/fecha.*alta/i]),
+    d_mecan:  find(d, ['descripcion_mecanismo','MECANISMO','Mecanismo',/mecanismo/i]),
+    d_sin:    find(d, ['SINIESTRO','N° SINIESTRO',/siniestro/i]),
+    d_mes:    find(d, ['MES','Mes','mes']),
+    d_anio:   find(d, ['AÑO','ANIO','Anio','anio','año',/a[ñn]o/i]),
+    // Archivo Plano
+    p_rut:    find(p, ['Rut','RUT','rut']),
+    p_dv:     find(p, ['Dv','DV','dv','Digito','DigitoVerificador',/d[iv]$/i]),
+    p_estab:  find(p, ['Establecimiento','CodEstablecimiento',/^establec/i,/cod.*estab/i]),
+    p_descE:  find(p, ['Descripción Establecimiento','DescEstablecimiento','NombreEstablecimiento',
+                        /descripci[oó]n.*(estab|hosp)/i,/nombre.*(estab|hosp)/i]),
+    p_unidad: find(p, ['Descripción Unidad','DescUnidad',/descripci[oó]n.*unidad/i]),
+    p_cargo:  find(p, ['Descripción Cargo','DescCargo',/descripci[oó]n.*cargo/i]),
+    p_calidad:find(p, ['Descripción Calidad Jurídica','DescCalidad',/calidad/i]),
+  };
+}
+
+function parseDate(v){
+  if (!v && v !== 0) return null;
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400000));
+    return isNaN(d) ? null : d;
+  }
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function fmtD(v){ const d=parseDate(v); return d?d.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'; }
+function normRut(v){ return String(v??'').trim().replace(/\s/g,''); }
+function getN(row,col){ if(!col||row[col]==null) return null; return typeof row[col]==='number'?row[col]:parseInt(row[col]); }
+function getS(row,col){ return col?String(row[col]??''):''; }
+function abrev(s,n=28){ return s&&s.length>n?s.substring(0,n)+'…':s||''; }
+
+// ── FETCH ────────────────────────────────────────────────────────────────────
+async function cargarDatos(){
+  const url = g('url-input').value.trim();
+  if (!url){ setStatus('Falta URL del webhook',false); return; }
+
+  g('btn-load').disabled = true;
+  g('spin').style.display = 'block';
+  g('btn-txt').textContent = 'Cargando…';
+  setStatus('Conectando con n8n (~15–20s)…');
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 55000);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
+    const txt = await res.text();
+
+    let json;
+    try { json = JSON.parse(txt); } catch(e) {
+      const snip = txt.substring(0,200);
+      throw new Error(`Respuesta no es JSON: ${snip}`);
+    }
+
+    // n8n a veces envuelve en { data: [{json:{...}}] }
+    if (Array.isArray(json)) json = json[0] || {};
+    if (json.data == null && json.json) json = json.json;
+
+    if (!json.data || !json.plano){
+      showDebug(`Estructura recibida:\n${JSON.stringify(json, null, 2).substring(0, 800)}`);
+      throw new Error(`Claves data/plano no encontradas. Ver panel de diagnóstico.`);
+    }
+
+    S.raw = json;
+    procesarTodo();
+    setStatus(`✓ ${json.data.length} accidentes · ${json.plano.length} funcionarios`);
+    g('tabnav').style.display = 'flex';
+    g('btn-print').style.display = 'block';
+    showTab('cruce');
+
+  } catch(e){
+    clearTimeout(timer);
+    if (e.name === 'AbortError') setStatus('Tiempo de espera agotado (55s) — workflow muy lento o inactivo',false);
+    else setStatus('Error: ' + e.message, false);
+    console.error(e);
+  } finally {
+    g('btn-load').disabled = false;
+    g('spin').style.display = 'none';
+    g('btn-txt').textContent = '⟳ Recargar';
+  }
+}
+
+function showDebug(txt){
+  g('debug-card').style.display='block';
+  g('debug-panel').textContent = txt;
+  g('debug-panel').style.display = 'block';
+}
+function toggleDebug(){
+  const p = g('debug-panel');
+  p.style.display = p.style.display==='none'?'block':'none';
+}
+
+// ── PROCESAMIENTO ────────────────────────────────────────────────────────────
+function procesarTodo(){
+  const { data, plano } = S.raw;
+  const c = detectCols(data[0], plano[0]);
+  S.cols = c;
+
+  // Mapa RUT → plano
+  const planoMap = {};
+  plano.forEach(r => {
+    if (!c.p_rut) return;
+    const rut = normRut(getS(r, c.p_rut)) + (c.p_dv ? '-'+normRut(getS(r, c.p_dv)) : '');
+    if (!planoMap[rut]) planoMap[rut] = r;
+  });
+
+  // Cruzar
+  S.cruzados = data.map(acc => {
+    const rut = normRut(getS(acc, c.d_rut));
+    const match = planoMap[rut] || null;
+    return {
+      ...acc,
+      _rut:  rut,
+      _matched: !!match,
+      _estabCod:  match ? getN(match, c.p_estab)  : null,
+      _estabDesc: match ? getS(match, c.p_descE)  : '',
+      _unidad:    match ? getS(match, c.p_unidad)  : '',
+      _cargo:     match ? getS(match, c.p_cargo)   : '',
+      _calidad:   match ? getS(match, c.p_calidad) : '',
+    };
+  });
+
+  // Dotación por establecimiento
+  const dotMap = {};
+  plano.forEach(r => {
+    const cod = c.p_estab ? getN(r, c.p_estab) : null;
+    if (cod == null || cod < 1300 || cod > 1400) return;
+    if (!dotMap[cod]) dotMap[cod] = { nombre: getS(r, c.p_descE) || `Cod ${cod}`, ruts: new Set() };
+    const rut = normRut(getS(r, c.p_rut)) + (c.p_dv ? '-'+normRut(getS(r, c.p_dv)) : '');
+    dotMap[cod].ruts.add(rut);
+  });
+
+  // Si no hay establecimientos en rango 1300-1400, usar todos los que tenga
+  if (!Object.keys(dotMap).length && c.p_estab) {
+    plano.forEach(r => {
+      const cod = getN(r, c.p_estab);
+      if (cod == null) return;
+      if (!dotMap[cod]) dotMap[cod] = { nombre: getS(r, c.p_descE) || `Cod ${cod}`, ruts: new Set() };
+      const rut = normRut(getS(r, c.p_rut)) + (c.p_dv ? '-'+normRut(getS(r, c.p_dv)) : '');
+      dotMap[cod].ruts.add(rut);
+    });
+  }
+
+  // KPIs
+  const m = me(), a = an();
+  S.kpis = Object.entries(dotMap).map(([cod, info]) => {
+    const codN = parseInt(cod);
+    const dot  = info.ruts.size;
+    const hh   = dot * HORAS_MES;
+    const subAll  = S.cruzados.filter(r => r._estabCod === codN);
+    const subMes  = subAll.filter(r => getN(r, c.d_mes) === m && getN(r, c.d_anio) === a);
+    const subAnio = subAll.filter(r => getN(r, c.d_anio) === a);
+
+    const nT  = tipo => (arr) => arr.filter(r => (getS(r,c.d_tipo)).includes(tipo)).length;
+    const dp  = (arr) => arr
+      .filter(r => getS(r,c.d_tipo).includes('Trabajo') && getS(r,c.d_ctp)==='CTP')
+      .reduce((s,r) => {
+        const d1=parseDate(r[c.d_fechaI]), d2=parseDate(r[c.d_fechaA]);
+        return d1&&d2 ? s+Math.max(0,Math.round((d2-d1)/86400000)+1) : s;
+      }, 0);
+
+    const at_m  = nT('Trabajo')(subMes);
+    const ep_m  = nT('Profesional')(subMes);
+    const tr_m  = nT('Trayecto')(subMes);
+    const at_a  = nT('Trabajo')(subAnio);
+    const dp_a  = dp(subAnio);
+    const ctp_a = subAnio.filter(r => getS(r,c.d_tipo).includes('Trabajo') && getS(r,c.d_ctp)==='CTP').length;
+
+    return {
+      cod: codN, nombre: info.nombre, dot, hh,
+      at_m, ep_m, tr_m, at_a, dp_a, ctp_a,
+      t_acc:  dot  ? +(at_a/dot*100).toFixed(1)  : 0,
+      t_freq: hh   ? Math.round(at_a/hh*1e6)     : 0,
+      t_grav: hh   ? +(dp_a/hh*1000).toFixed(1)  : 0,
+      t_sin:  ctp_a? Math.round(dp_a/ctp_a)       : 0,
+      casos: subMes,
+    };
+  }).sort((a,b) => a.cod - b.cod);
+
+  // Debug info
+  showDebug(`Columnas detectadas (Data.xlsx):\n${JSON.stringify({...c},null,2)}\n\nPrimera fila Data:\n${JSON.stringify(Object.keys(data[0]||{}))}\n\nPrimera fila Plano:\n${JSON.stringify(Object.keys(plano[0]||{}))}`);
+
+  renderCruce();
+  renderNoMatch();
+  poblarFiltros();
+  renderBase();
+  renderResultado();
+}
+
+// ── CRUCE ────────────────────────────────────────────────────────────────────
+function renderCruce(){
+  const tot  = S.cruzados.length;
+  const ok   = S.cruzados.filter(r=>r._matched).length;
+  const fail = tot - ok;
+  const pct  = tot ? +(ok/tot*100).toFixed(1) : 0;
+  const m = me(), a = an();
+
+  g('cruce-meta').textContent = `${mn()} ${a}`;
+  g('tipo-meta').textContent  = `${mc()} ${a}`;
+
+  g('flow').innerHTML = `
+    <div class="fbox k-green">
+      <div class="fbox-l">Accidentes</div>
+      <div class="fbox-name">Data.xlsx</div>
+      <div class="fbox-n">${tot}</div>
+    </div>
+    <div class="farrow">⊕</div>
+    <div class="fbox k-blue">
+      <div class="fbox-l">Funcionarios</div>
+      <div class="fbox-name">Archivo Plano</div>
+      <div class="fbox-n">${S.raw.plano.length}</div>
+    </div>
+    <div class="farrow">→</div>
+    <div class="fbox k-gray" style="border:2px solid var(--g2)">
+      <div class="fbox-l">Clave de cruce</div>
+      <div class="fbox-name" style="font-family:monospace;font-size:.78rem;color:var(--g1)">RUT PACIENTE</div>
+      <div style="font-size:.65rem;color:var(--muted)">= Rut + "-" + Dv</div>
+    </div>
+    <div class="farrow">→</div>
+    <div class="fbox k-green">
+      <div class="fbox-l">Asignados</div>
+      <div class="fbox-name">Con establecimiento</div>
+      <div class="fbox-n">${ok}</div>
+    </div>
+    <div class="farrow">+</div>
+    <div class="fbox k-red">
+      <div class="fbox-l">Sin match</div>
+      <div class="fbox-name">No encontrados</div>
+      <div class="fbox-n">${fail}</div>
+    </div>`;
+
+  g('mbl').innerHTML = `Cobertura: <strong style="color:var(--g1)">${pct}%</strong> — ${ok} de ${tot} registros asignados a un establecimiento`;
+  g('mfill').style.width = pct + '%';
+  g('mfill').textContent = pct + '%';
+
+  // Chart: tipos (período)
+  const sub = S.cruzados.filter(r => getN(r,S.cols.d_mes)===m && getN(r,S.cols.d_anio)===a);
+  const tipoMap = {};
+  sub.forEach(r => {
+    const t = getS(r, S.cols.d_tipo) || 'Desconocido';
+    tipoMap[t] = (tipoMap[t]||0)+1;
+  });
+  const tLabels = Object.keys(tipoMap);
+  const tVals   = tLabels.map(t=>tipoMap[t]);
+  const tColors = tLabels.map(t => t.includes('Trabajo')?'#13C045':t.includes('Trayecto')?'#1a56a0':'#e67e22');
+
+  if (charts.tipo) charts.tipo.destroy();
+  charts.tipo = new Chart(g('ch-tipo'), {
+    type:'bar',
+    data:{ labels:tLabels, datasets:[{ data:tVals, backgroundColor:tColors, borderRadius:6, borderSkipped:false }]},
+    options:{
+      indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{stepSize:1},grid:{color:'rgba(0,0,0,.05)'}},
+        y:{grid:{display:false}}
+      },
+      responsive:true, maintainAspectRatio:false
+    }
+  });
+
+  // Chart: match donut
+  if (charts.match) charts.match.destroy();
+  charts.match = new Chart(g('ch-match'), {
+    type:'doughnut',
+    data:{
+      labels:[`Con match (${ok})`,`Sin match (${fail})`],
+      datasets:[{ data:[ok,fail], backgroundColor:['#13C045','#c0392b'], borderWidth:2, borderColor:'#fff' }]
+    },
+    options:{
+      cutout:'62%',
+      plugins:{ legend:{ position:'bottom', labels:{ padding:14, font:{size:11} } } },
+      responsive:true, maintainAspectRatio:false
+    }
+  });
+
+  // Chart: AT por hospital
+  const hospAT = S.kpis.filter(k=>k.at_m>0);
+  if (charts.hosps) charts.hosps.destroy();
+  if (hospAT.length){
+    charts.hosps = new Chart(g('ch-hosps'), {
+      type:'bar',
+      data:{
+        labels: hospAT.map(k=>abrev(k.nombre,32)),
+        datasets:[{ data:hospAT.map(k=>k.at_m), backgroundColor:'#13C045', borderRadius:6, borderSkipped:false, label:'AT' }]
+      },
+      options:{
+        indexAxis:'y',
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{stepSize:1},grid:{color:'rgba(0,0,0,.05)'}},
+          y:{grid:{display:false},ticks:{font:{size:11}}}
+        },
+        responsive:true, maintainAspectRatio:false
+      }
+    });
+  } else {
+    g('ch-hosps').parentElement.innerHTML = '<p style="text-align:center;color:var(--light);padding:50px 0;font-size:.88rem">Sin accidentes de trabajo en este período</p>';
+  }
+}
+
+// ── SIN MATCH ────────────────────────────────────────────────────────────────
+function renderNoMatch(){
+  const nm = S.cruzados.filter(r=>!r._matched);
+  const badge = g('nm-badge');
+  if (nm.length){ badge.style.display='inline-flex'; badge.textContent=nm.length; }
+  else badge.style.display='none';
+
+  if (!nm.length){
+    g('nomatch-alert').innerHTML='<div class="alert a-ok">✓ Todos los accidentes fueron asignados a un establecimiento.</div>';
+    g('nomatch-tbl').innerHTML=''; return;
+  }
+  g('nomatch-alert').innerHTML = `<div class="alert a-warn">⚠ ${nm.length} registro${nm.length!==1?'s':''} sin match. Verificar si el RUT está mal ingresado o si el funcionario no está en el Archivo Plano.</div>`;
+  const c=S.cols;
+  const cols=[c.d_sin,c.d_rut,c.d_nombre,c.d_tipo,c.d_ctp,c.d_fechaP,'MES','AÑO'].filter(Boolean);
+  const hdrs=['Siniestro','RUT','Nombre','Tipo','CTP/STP','Fecha','Mes','Año'];
+  g('nomatch-tbl').innerHTML = buildTable(nm.slice(0,300), cols, hdrs, 't-nm', ()=>'row-nm');
+}
+
+// ── BASE CRUZADA ──────────────────────────────────────────────────────────────
+function poblarFiltros(){
+  const sel = g('f-hosp');
+  sel.innerHTML='<option value="">Todos los establecimientos</option>';
+  const hosps=[...new Set(S.cruzados.filter(r=>r._estabDesc).map(r=>r._estabDesc))].sort();
+  hosps.forEach(h=>{ const o=document.createElement('option');o.value=h;o.textContent=h;sel.appendChild(o); });
+
+  const sel2 = g('hosp-sel');
+  sel2.innerHTML='';
+  S.kpis.forEach(k => {
+    const o=document.createElement('option');
+    o.value=k.cod;
+    o.textContent=`${k.cod} — ${abrev(k.nombre,40)}`;
+    sel2.appendChild(o);
+  });
+  if(S.kpis.length) renderDetalle();
+}
+
+function renderBase(){
+  const hf = g('f-hosp').value;
+  const tf = g('f-tipo').value;
+  const sf = g('f-base').value.toLowerCase();
+  const c  = S.cols;
+
+  let rows = S.cruzados;
+  if (hf) rows = rows.filter(r => r._estabDesc === hf);
+  if (tf) rows = rows.filter(r => getS(r,c.d_tipo).includes(tf));
+  if (sf) rows = rows.filter(r => JSON.stringify(r).toLowerCase().includes(sf));
+
+  const cols = [c.d_sin,c.d_nombre,'_rut',c.d_tipo,c.d_ctp,c.d_fechaP,c.d_mecan,'_estabDesc','_unidad','_cargo','MES','AÑO'].filter(Boolean);
+  const hdrs = ['Siniestro','Nombre','RUT','Tipo','CTP/STP','Fecha','Mecanismo','Establecimiento','Unidad','Cargo','Mes','Año'];
+  const lim  = Math.min(rows.length, 500);
+  g('base-tbl').innerHTML = buildTable(rows.slice(0,lim), cols, hdrs, '', r=>r._matched?'':'row-nm');
+  g('base-meta').textContent = lim < rows.length ? `Mostrando ${lim} de ${rows.length}` : `${rows.length} registro${rows.length!==1?'s':''}`;
+}
+
+// ── RESULTADO ─────────────────────────────────────────────────────────────────
+function renderResultado(){
+  const a = an();
+  const tot = {
+    at_m:  S.kpis.reduce((s,k)=>s+k.at_m,0),
+    ep_m:  S.kpis.reduce((s,k)=>s+k.ep_m,0),
+    tr_m:  S.kpis.reduce((s,k)=>s+k.tr_m,0),
+    at_a:  S.kpis.reduce((s,k)=>s+k.at_a,0),
+    dp_a:  S.kpis.reduce((s,k)=>s+k.dp_a,0),
+    dot:   S.kpis.reduce((s,k)=>s+k.dot,0),
+  };
+  g('res-title').textContent = `Resumen ejecutivo SSMO — ${mn()} ${a}`;
+  g('res-meta').textContent  = `${S.kpis.length} establecimientos`;
+
+  g('kpi-tot').innerHTML = `
+    <div class="kpi k-green"><div class="kpi-l">AT ${mc()}</div><div class="kpi-v">${tot.at_m}</div><div class="kpi-s">Accidentes de trabajo</div></div>
+    <div class="kpi k-orange"><div class="kpi-l">EP ${mc()}</div><div class="kpi-v">${tot.ep_m}</div><div class="kpi-s">Enfermedades profesionales</div></div>
+    <div class="kpi k-blue"><div class="kpi-l">Trayecto ${mc()}</div><div class="kpi-v">${tot.tr_m}</div><div class="kpi-s">Accidentes de trayecto</div></div>
+    <div class="kpi k-green"><div class="kpi-l">AT acum. ${a}</div><div class="kpi-v">${tot.at_a}</div><div class="kpi-s">Ene – ${mc()}</div></div>
+    <div class="kpi k-red"><div class="kpi-l">Días perdidos ${a}</div><div class="kpi-v">${tot.dp_a}</div><div class="kpi-s">Solo AT con CTP</div></div>
+    <div class="kpi k-gray"><div class="kpi-l">Dotación SSMO</div><div class="kpi-v">${tot.dot.toLocaleString('es-CL')}</div><div class="kpi-s">Archivo Plano</div></div>`;
+
+  // Tabla consolidada
+  const head = `<tr>
+    <th>Cód</th><th>Establecimiento</th><th>Dotación</th>
+    <th>AT ${mc()}</th><th>EP ${mc()}</th><th>Tray ${mc()}</th>
+    <th>AT ${a}</th><th>Días P. ${a}</th>
+    <th>T.Accid%</th><th>T.Freq</th><th>T.Grav</th><th>T.Sin</th>
+  </tr>`;
+  const body = S.kpis.map(k=>`<tr>
+    <td>${k.cod}</td>
+    <td style="max-width:200px;white-space:normal">${k.nombre}</td>
+    <td style="text-align:center">${k.dot}</td>
+    <td style="text-align:center">${k.at_m||'—'}</td>
+    <td style="text-align:center">${k.ep_m||'—'}</td>
+    <td style="text-align:center">${k.tr_m||'—'}</td>
+    <td style="text-align:center">${k.at_a||'—'}</td>
+    <td style="text-align:center">${k.dp_a||'—'}</td>
+    <td style="text-align:center">${k.t_acc}%</td>
+    <td style="text-align:center">${k.t_freq}</td>
+    <td style="text-align:center">${k.t_grav}</td>
+    <td style="text-align:center">${k.t_sin||'—'}</td>
+  </tr>`).join('');
+  const foot = `<tr>
+    <td colspan="2">TOTAL SSMO</td>
+    <td style="text-align:center">${tot.dot}</td>
+    <td style="text-align:center">${tot.at_m}</td>
+    <td style="text-align:center">${tot.ep_m}</td>
+    <td style="text-align:center">${tot.tr_m}</td>
+    <td style="text-align:center">${tot.at_a}</td>
+    <td style="text-align:center">${tot.dp_a}</td>
+    <td colspan="4"></td>
+  </tr>`;
+  g('tbl-kpis').innerHTML=`<div class="tscroll"><table class="dt"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
+}
+
+function renderDetalle(){
+  const cod = parseInt(g('hosp-sel').value);
+  const k = S.kpis.find(h=>h.cod===cod);
+  if (!k){ g('hosp-det').innerHTML=''; return; }
+  const c=S.cols, m=me(), a=an();
+
+  const tipoTag = t => t?.includes('Trabajo')?'tag-at':t?.includes('Trayecto')?'tag-tr':t?.includes('Profesional')?'tag-ep':'';
+  let tablaCasos = '';
+  if (k.casos.length){
+    const cols=[c.d_sin,c.d_nombre,'_rut',c.d_tipo,c.d_ctp,c.d_fechaP,c.d_mecan,'_unidad'].filter(Boolean);
+    const hdrs=['Siniestro','Nombre','RUT','Tipo','CTP/STP','Fecha','Mecanismo','Unidad'];
+    tablaCasos = buildTable(k.casos, cols, hdrs);
+  } else {
+    tablaCasos = `<p style="color:var(--light);padding:10px 0;font-size:.85rem">Sin siniestros en ${mn()} ${a}</p>`;
+  }
+
+  g('hosp-det').innerHTML = `
+    <div class="krow" style="margin-bottom:16px">
+      <div class="kpi k-green"><div class="kpi-l">AT ${mc()}</div><div class="kpi-v">${k.at_m}</div></div>
+      <div class="kpi k-orange"><div class="kpi-l">EP ${mc()}</div><div class="kpi-v">${k.ep_m}</div></div>
+      <div class="kpi k-blue"><div class="kpi-l">Trayecto ${mc()}</div><div class="kpi-v">${k.tr_m}</div></div>
+      <div class="kpi k-gray"><div class="kpi-l">Dotación</div><div class="kpi-v">${k.dot}</div></div>
+      <div class="kpi k-green"><div class="kpi-l">T.Accidentabilidad</div><div class="kpi-v">${k.t_acc}%</div></div>
+      <div class="kpi k-red"><div class="kpi-l">Días perdidos ${a}</div><div class="kpi-v">${k.dp_a}</div></div>
+    </div>
+    <div style="font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">Siniestros en ${mn()} ${a}</div>
+    ${tablaCasos}`;
+}
+
+// ── TABLA ─────────────────────────────────────────────────────────────────────
+function buildTable(rows, cols, hdrs, id='', rowCls=(()=>'')){
+  const h = (hdrs&&hdrs.length?hdrs:cols).map(x=>`<th>${x}</th>`).join('');
+  const b = rows.map(r=>{
+    const cls = rowCls(r);
+    const tds = cols.map(c=>{
+      const key = c||'';
+      let v = r[key]??'—';
+      if (key.includes('FECHA')||key.includes('fecha')) v=fmtD(r[key]);
+      if (key===S.cols?.d_tipo&&v!=='—') v=`<span class="tag ${tipoTag2(v)}">${v}</span>`;
+      return `<td>${v}</td>`;
+    }).join('');
+    return `<tr class="${cls}">${tds}</tr>`;
+  }).join('');
+  return `<div class="tscroll"><table class="dt"${id?` id="${id}"`:''}><thead><tr>${h}</tr></thead><tbody>${b}</tbody></table></div>`;
+}
+function tipoTag2(t){ return t.includes('Trabajo')?'tag-at':t.includes('Trayecto')?'tag-tr':t.includes('Profesional')?'tag-ep':''; }
+
+function filterTable(tblId, inpId){
+  const txt = g(inpId).value.toLowerCase();
+  document.querySelectorAll(`#${tblId} tbody tr`).forEach(r=>{
+    r.style.display = r.textContent.toLowerCase().includes(txt)?'':'none';
+  });
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function showTab(name){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.ttab').forEach(b=>b.classList.remove('on'));
+  const sec=g('s-'+name)||g('s-welcome');
+  if(sec) sec.classList.add('on');
+  const btn=g('t-'+name);
+  if(btn) btn.classList.add('on');
+}
+
+// Recalcular al cambiar período sin hacer fetch
+['sel-mes','sel-anio'].forEach(id=>{
+  g(id).addEventListener('change',()=>{ if(S.raw) procesarTodo(); });
+});
+
+// Avisar si se abre desde file://
+if(location.protocol==='file:'){
+  g('file-alert').style.display='block';
+}
+</script>
+</body>
+</html>
