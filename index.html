@@ -386,7 +386,7 @@ function detectCols(dr, pr){
     d_mecan: find(d,['DESCRIPTOR AGENCIA COMERCIAL','descripcion_mecanismo','MECANISMO',/descriptor.*agencia/i,/mecanismo/i,/descriptor/i]),
     d_agencia:find(d,['AGENCIA INGRESO','AGENCIA',/agencia/i]),
     d_mes:   find(d,['MES','mes']),
-    d_anio:  find(d,['AÑO','ANIO','Año','anio',/a[ñn]o/i]),
+    d_anio:  find(d,['ANO','AÑO','ANo','ANIO','Año','anio',/a[ñn]o/i]),
     p_rut:   find(p,['Rut','RUT','rut']),
     p_dv:    find(p,['Dv','DV','dv','DigitoVerificador',/d[iv]$/i]),
     p_estab: find(p,['Establecimiento','CodEstablecimiento',/^establec/i,/cod.*estab/i]),
@@ -401,50 +401,47 @@ async function load(){
   const url=g('url-in').value.trim();
   if(!url){setst('Falta la URL',false);return;}
   g('btn-load').disabled=true; g('spin').style.display='block'; g('btxt').textContent='Cargando…';
-  setst('Conectando (~15–20s)…');
+  setst('Conectando (~30–60s)…');
   const ctrl=new AbortController();
-  const tmr=setTimeout(()=>ctrl.abort(),60000);
+  const tmr=setTimeout(()=>ctrl.abort(),120000);
   try{
     const res=await fetch(url,{headers:{Accept:'application/json'},signal:ctrl.signal});
     clearTimeout(tmr);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    // Leer como texto para máximo control de encoding
-    const raw=await res.text();
-
-    // Guardar raw para diagnóstico (siempre, antes de parsear)
-    g('dbg').textContent='RAW (primeros 1000 chars):\n'+raw.substring(0,1000);
-
-    // Limpiar BOM (U+FEFF) y chars de control antes del primer { o [
-    let txt=raw
-      .replace(/^﻿/,'')
-      .replace(/^[^\[{]*/,'')
-      .trim();
+    // Clonar respuesta para poder leer como texto si el parser nativo falla
+    const resClone=res.clone();
 
     let json;
     try{
-      json=JSON.parse(txt);
+      // Intento 1: parser nativo del navegador (más robusto con encoding)
+      json=await res.json();
     }catch(e1){
-      // 2° intento: eliminar chars de control ASCII no imprimibles
+      // Intento 2: texto → limpiar → JSON.parse manual
+      let raw='';
       try{
+        raw=await resClone.text();
         // eslint-disable-next-line no-control-regex
-        json=JSON.parse(txt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,''));
+        const clean=raw.replace(/^﻿/,'').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'').trim();
+        json=JSON.parse(clean);
       }catch(e2){
         g('dbg').style.display='block';
-        g('dbg').textContent='Error de parse: '+e1.message+'\n\nRAW (1000 chars):\n'+raw.substring(0,1000);
+        g('dbg').textContent='Parse error: '+e1.message+'\n\nRAW (1200 chars):\n'+raw.substring(0,1200);
         tab('cruce');
-        throw new Error('JSON inválido — abre pestaña Cruce RUT → panel de diagnóstico para ver la respuesta cruda');
+        throw new Error('No se pudo parsear la respuesta — ver diagnóstico en pestaña Cruce RUT');
       }
     }
 
-    // n8n puede envolver en array o en {json:{}} según versión
+    // n8n puede envolver en array o en {json:{}}
     if(Array.isArray(json)) json=json[0]||{};
     if(json.data==null&&json.json) json=json.json;
     if(json.data==null&&json.body) json=json.body;
 
+    // Guardar raw para diagnóstico (útil para verificar estructura)
+    g('dbg').textContent=`Claves recibidas: ${JSON.stringify(Object.keys(json))}\ndata: ${(json.data||[]).length} filas\nplano: ${(json.plano||[]).length} filas\n\nPrimera fila data:\n${JSON.stringify(json.data?.[0],null,2)}\n\nPrimera fila plano:\n${JSON.stringify(json.plano?.[0],null,2)}`;
+
     if(!json.data||!json.plano){
       g('dbg').style.display='block';
-      g('dbg').textContent='Claves recibidas: '+JSON.stringify(Object.keys(json))+'\n\nRAW (600 chars):\n'+raw.substring(0,600);
       tab('cruce');
       throw new Error('Claves data/plano no encontradas — ver diagnóstico en pestaña Cruce RUT');
     }
@@ -457,7 +454,7 @@ async function load(){
     tab('ssmo');
   }catch(e){
     clearTimeout(tmr);
-    if(e.name==='AbortError') setst('Tiempo agotado (60s) — ¿workflow activo?',false);
+    if(e.name==='AbortError') setst('Tiempo agotado (120s) — ¿workflow activo?',false);
     else setst('Error: '+e.message,false);
   }finally{
     g('btn-load').disabled=false; g('spin').style.display='none'; g('btxt').textContent='⟳ Recargar';
