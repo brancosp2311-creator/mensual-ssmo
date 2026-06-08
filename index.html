@@ -408,29 +408,45 @@ async function load(){
     const res=await fetch(url,{headers:{Accept:'application/json'},signal:ctrl.signal});
     clearTimeout(tmr);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    let txt=await res.text();
-    txt=txt.replace(/^﻿/,'').trim();  // quitar BOM
+
+    // Leer como texto para máximo control de encoding
+    const raw=await res.text();
+
+    // Guardar raw para diagnóstico (siempre, antes de parsear)
+    g('dbg').textContent='RAW (primeros 1000 chars):\n'+raw.substring(0,1000);
+
+    // Limpiar BOM (U+FEFF) y chars de control antes del primer { o [
+    let txt=raw
+      .replace(/^﻿/,'')
+      .replace(/^[^\[{]*/,'')
+      .trim();
 
     let json;
-    try{ json=JSON.parse(txt); }
-    catch(e){
-      // mostrar diagnóstico
-      g('dbg').style.display='block';
-      g('dbg').textContent='RAW (primeros 600 chars):\n'+txt.substring(0,600)+'\n\nError: '+e.message;
-      tab('cruce');
-      throw new Error('JSON inválido — ver panel de diagnóstico en pestaña Cruce');
+    try{
+      json=JSON.parse(txt);
+    }catch(e1){
+      // 2° intento: eliminar chars de control ASCII no imprimibles
+      try{
+        // eslint-disable-next-line no-control-regex
+        json=JSON.parse(txt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,''));
+      }catch(e2){
+        g('dbg').style.display='block';
+        g('dbg').textContent='Error de parse: '+e1.message+'\n\nRAW (1000 chars):\n'+raw.substring(0,1000);
+        tab('cruce');
+        throw new Error('JSON inválido — abre pestaña Cruce RUT → panel de diagnóstico para ver la respuesta cruda');
+      }
     }
 
-    // n8n a veces envuelve en array o en {json:{}}
+    // n8n puede envolver en array o en {json:{}} según versión
     if(Array.isArray(json)) json=json[0]||{};
     if(json.data==null&&json.json) json=json.json;
     if(json.data==null&&json.body) json=json.body;
 
     if(!json.data||!json.plano){
       g('dbg').style.display='block';
-      g('dbg').textContent='Estructura recibida:\n'+JSON.stringify(Object.keys(json))+'\n\n'+JSON.stringify(json).substring(0,500);
+      g('dbg').textContent='Claves recibidas: '+JSON.stringify(Object.keys(json))+'\n\nRAW (600 chars):\n'+raw.substring(0,600);
       tab('cruce');
-      throw new Error('Claves data/plano no encontradas — ver diagnóstico');
+      throw new Error('Claves data/plano no encontradas — ver diagnóstico en pestaña Cruce RUT');
     }
 
     D.raw=json;
