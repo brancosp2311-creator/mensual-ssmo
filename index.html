@@ -151,6 +151,27 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .tt{background:var(--blul);color:var(--blu)}
 .te{background:var(--oral);color:var(--ora)}
 
+/* ── DIAS DESDE ── */
+.dias-row{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:14px}
+.dias-card{border-radius:10px;padding:16px 18px;text-align:center;border:1.5px solid var(--brd)}
+.dias-num{font-size:2.4rem;font-weight:900;line-height:1;margin-bottom:4px}
+.dias-lbl{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.dias-sub{font-size:.68rem;color:var(--lite);margin-top:2px}
+.dias-at{background:var(--g4);border-color:#b0e8c5}.dias-at .dias-num{color:var(--g1)}
+.dias-tr{background:var(--blul);border-color:#b0c8f0}.dias-tr .dias-num{color:var(--blu)}
+.dias-ep{background:var(--oral);border-color:#f5cfa0}.dias-ep .dias-num{color:var(--ora)}
+
+/* ── SECCIÓN TIPO ── */
+.stipo{margin-bottom:14px}
+.stipo-hdr{display:flex;align-items:center;gap:8px;padding:11px 18px;border-radius:10px 10px 0 0;font-size:.82rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.stipo-body{background:var(--card);border:1px solid var(--brd);border-top:none;border-radius:0 0 10px 10px;padding:16px}
+.at-hdr{background:#0b6e28;color:#fff}
+.ep-hdr{background:#c87000;color:#fff}
+.tr-hdr{background:#1a56a0;color:#fff}
+.krow2{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:9px;margin-bottom:12px}
+.tasas-row{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0}
+@media(max-width:680px){.dias-row{grid-template-columns:1fr}.tasas-row{grid-template-columns:repeat(2,1fr)}}
+
 /* ── PRINT ── */
 #btn-print{position:fixed;bottom:20px;right:20px;background:var(--g1);color:#fff;border:none;cursor:pointer;padding:10px 18px;border-radius:22px;font-weight:700;font-size:.8rem;box-shadow:var(--sh2);display:none;z-index:300;transition:all .15s}
 #btn-print:hover{background:var(--g2);transform:scale(1.05)}
@@ -213,7 +234,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
         <h3>Cómo usar</h3>
         <div class="step"><div class="sn">1</div><div class="st">Confirma que el workflow <b>API Datos SSMO</b> esté activo en n8n</div></div>
         <div class="step"><div class="sn">2</div><div class="st">Selecciona el <b>mes y año</b> del período</div></div>
-        <div class="step"><div class="sn">3</div><div class="st">Haz clic en <b>⟳ Cargar datos</b> — toma ~15–20 segundos</div></div>
+        <div class="step"><div class="sn">3</div><div class="st">Haz clic en <b>⟳ Cargar datos</b> — toma ~30–60 segundos</div></div>
         <div class="step"><div class="sn">4</div><div class="st">Navega entre las pestañas para ver el resumen SSMO, el detalle por hospital, el cruce de RUT y la base completa</div></div>
       </div>
     </div>
@@ -497,10 +518,10 @@ function procesar(){
     dot[cod].ruts.add(rut);
   });
 
-  // filtrar rango SSMO si existe
+  // filtrar rango SSMO con dotación significativa (≥50 excluye registros foráneos)
   const codes=Object.keys(dot).map(Number);
-  const ssmoRange=codes.filter(x=>x>=1300&&x<=1400);
-  const useCodes=ssmoRange.length?ssmoRange:codes;
+  const ssmoRange=codes.filter(x=>x>=1300&&x<=1400&&dot[x].ruts.size>=50);
+  const useCodes=ssmoRange.length?ssmoRange:codes.filter(x=>dot[x].ruts.size>=50);
 
   // KPIs por establecimiento
   const m=me(),a=an();
@@ -512,27 +533,50 @@ function procesar(){
     const anio=all.filter(r=>gN(r,c.d_anio)===a);
 
     const cnt=(tipo,arr)=>arr.filter(r=>gS(r,c.d_tipo).includes(tipo)).length;
-    const dp=(arr)=>arr.filter(r=>gS(r,c.d_tipo).includes('Trabajo')&&gS(r,c.d_ctp)==='CTP')
+    // Días perdidos: AT usa solo CTP; EP y Trayecto usan todos con fechas
+    const dpTipo=(tipo,arr,soloCtP=false)=>arr
+      .filter(r=>gS(r,c.d_tipo).includes(tipo)&&(!soloCtP||gS(r,c.d_ctp)==='CTP'))
       .reduce((s,r)=>{const d1=parseDate(r[c.d_fechaI]),d2=parseDate(r[c.d_fechaA]);return d1&&d2?s+Math.max(0,Math.round((d2-d1)/86400000)+1):s;},0);
 
-    const at_m=cnt('Trabajo',mes),ep_m=cnt('Profesional',mes),tr_m=cnt('Trayecto',mes);
-    const at_a=cnt('Trabajo',anio),dp_a=dp(anio),ctp_a=anio.filter(r=>gS(r,c.d_tipo).includes('Trabajo')&&gS(r,c.d_ctp)==='CTP').length;
+    // Días desde último accidente por tipo (sobre todo el historial del establecimiento)
+    const diasDesde=(tipo)=>{
+      let last=null;
+      all.forEach(r=>{if(!gS(r,c.d_tipo).includes(tipo)) return; const d=parseDate(r[c.d_fechaP]); if(d&&(!last||d>last)) last=d;});
+      return last?Math.round((new Date()-last)/86400000):null;
+    };
 
-    // Tendencia mensual AT del año
-    const trend=Array.from({length:12},(_,i)=>{
+    // Conteos mes
+    const at_m=cnt('Trabajo',mes), ep_m=cnt('Profesional',mes), tr_m=cnt('Trayecto',mes);
+    const at_m_dp=dpTipo('Trabajo',mes,true), ep_m_dp=dpTipo('Profesional',mes), tr_m_dp=dpTipo('Trayecto',mes);
+
+    // Conteos año
+    const at_a=cnt('Trabajo',anio), ep_a=cnt('Profesional',anio), tr_a=cnt('Trayecto',anio);
+    const ctp_a=anio.filter(r=>gS(r,c.d_tipo).includes('Trabajo')&&gS(r,c.d_ctp)==='CTP').length;
+    const dp_a=dpTipo('Trabajo',anio,true), ep_a_dp=dpTipo('Profesional',anio), tr_a_dp=dpTipo('Trayecto',anio);
+
+    // Tendencia mensual por tipo
+    const mkTrend=(tipo)=>Array.from({length:12},(_,i)=>{
       const mi=i+1;
-      return all.filter(r=>gS(r,c.d_tipo).includes('Trabajo')&&gN(r,c.d_anio)===a&&gN(r,c.d_mes)===mi).length;
+      return all.filter(r=>gS(r,c.d_tipo).includes(tipo)&&gN(r,c.d_anio)===a&&gN(r,c.d_mes)===mi).length;
     });
+    const trend=mkTrend('Trabajo'), trendEP=mkTrend('Profesional'), trendTR=mkTrend('Trayecto');
+
+    // Casos del mes por tipo
+    const casosAT=mes.filter(r=>gS(r,c.d_tipo).includes('Trabajo'));
+    const casosEP=mes.filter(r=>gS(r,c.d_tipo).includes('Profesional'));
+    const casosTR=mes.filter(r=>gS(r,c.d_tipo).includes('Trayecto'));
 
     return{
       cod,name:info.name,dot:d,hh,
-      at_m,ep_m,tr_m,at_a,dp_a,ctp_a,
+      at_m,ep_m,tr_m, at_m_dp,ep_m_dp,tr_m_dp,
+      at_a,ep_a,tr_a, dp_a,ep_a_dp,tr_a_dp, ctp_a,
       t_acc:d?+(at_a/d*100).toFixed(1):0,
       t_freq:hh?Math.round(at_a/hh*1e6):0,
       t_grav:hh?+(dp_a/hh*1000).toFixed(1):0,
       t_sin:ctp_a?Math.round(dp_a/ctp_a):0,
-      trend,
-      casos:mes,
+      dias_at:diasDesde('Trabajo'), dias_ep:diasDesde('Profesional'), dias_tr:diasDesde('Trayecto'),
+      trend, trendEP, trendTR,
+      casos:mes, casosAT, casosEP, casosTR,
       tipos:mes.reduce((o,r)=>{const t=gS(r,c.d_tipo)||'Otro';o[t]=(o[t]||0)+1;return o;},{}),
     };
   }).sort((a,b)=>a.cod-b.cod);
@@ -597,17 +641,19 @@ function renderSSMO(){
   }
 
   // Tabla consolidada
-  const head=`<tr><th>Cód</th><th>Establecimiento</th><th>Dot.</th><th>AT ${mc()}</th><th>EP ${mc()}</th><th>Tray. ${mc()}</th><th>AT ${a}</th><th>DP ${a}</th><th>T.Acc%</th><th>T.Freq</th><th>T.Grav</th><th>T.Sin</th></tr>`;
+  const head=`<tr><th>Cód</th><th>Establecimiento</th><th>Dot.</th><th>AT ${mc()}</th><th>DP AT ${mc()}</th><th>EP ${mc()}</th><th>Tray. ${mc()}</th><th>AT ${a}</th><th>EP ${a}</th><th>TR ${a}</th><th>DP AT ${a}</th><th>T.Acc%</th><th>T.Freq</th><th>T.Grav</th><th>T.Sin</th></tr>`;
   const body=D.kpis.map(k=>`<tr>
-    <td>${k.cod}</td><td style="max-width:200px;white-space:normal">${k.name}</td>
+    <td>${k.cod}</td><td style="max-width:180px;white-space:normal">${k.name}</td>
     <td style="text-align:center">${k.dot}</td>
-    <td style="text-align:center">${k.at_m||'—'}</td><td style="text-align:center">${k.ep_m||'—'}</td><td style="text-align:center">${k.tr_m||'—'}</td>
-    <td style="text-align:center">${k.at_a||'—'}</td><td style="text-align:center">${k.dp_a||'—'}</td>
+    <td style="text-align:center">${k.at_m||'—'}</td><td style="text-align:center">${k.at_m_dp||'—'}</td>
+    <td style="text-align:center">${k.ep_m||'—'}</td><td style="text-align:center">${k.tr_m||'—'}</td>
+    <td style="text-align:center">${k.at_a||'—'}</td><td style="text-align:center">${k.ep_a||'—'}</td><td style="text-align:center">${k.tr_a||'—'}</td>
+    <td style="text-align:center">${k.dp_a||'—'}</td>
     <td style="text-align:center">${k.t_acc}%</td><td style="text-align:center">${k.t_freq}</td>
     <td style="text-align:center">${k.t_grav}</td><td style="text-align:center">${k.t_sin||'—'}</td>
   </tr>`).join('');
-  const f=D.kpis.reduce((o,k)=>({at_m:o.at_m+k.at_m,ep_m:o.ep_m+k.ep_m,tr_m:o.tr_m+k.tr_m,at_a:o.at_a+k.at_a,dp_a:o.dp_a+k.dp_a,dot:o.dot+k.dot}),{at_m:0,ep_m:0,tr_m:0,at_a:0,dp_a:0,dot:0});
-  const foot=`<tr><td colspan="2">TOTAL SSMO</td><td style="text-align:center">${f.dot}</td><td style="text-align:center">${f.at_m}</td><td style="text-align:center">${f.ep_m}</td><td style="text-align:center">${f.tr_m}</td><td style="text-align:center">${f.at_a}</td><td style="text-align:center">${f.dp_a}</td><td colspan="4"></td></tr>`;
+  const f=D.kpis.reduce((o,k)=>({at_m:o.at_m+k.at_m,at_m_dp:o.at_m_dp+k.at_m_dp,ep_m:o.ep_m+k.ep_m,tr_m:o.tr_m+k.tr_m,at_a:o.at_a+k.at_a,ep_a:o.ep_a+k.ep_a,tr_a:o.tr_a+k.tr_a,dp_a:o.dp_a+k.dp_a,dot:o.dot+k.dot}),{at_m:0,at_m_dp:0,ep_m:0,tr_m:0,at_a:0,ep_a:0,tr_a:0,dp_a:0,dot:0});
+  const foot=`<tr><td colspan="2">TOTAL SSMO</td><td style="text-align:center">${f.dot}</td><td style="text-align:center">${f.at_m}</td><td style="text-align:center">${f.at_m_dp||'—'}</td><td style="text-align:center">${f.ep_m}</td><td style="text-align:center">${f.tr_m}</td><td style="text-align:center">${f.at_a}</td><td style="text-align:center">${f.ep_a}</td><td style="text-align:center">${f.tr_a}</td><td style="text-align:center">${f.dp_a}</td><td colspan="4"></td></tr>`;
   g('tbl-cons').innerHTML=`<div class="tscr"><table class="dt"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
 }
 
@@ -635,6 +681,60 @@ function navHosp(dir){
   renderHosp(k.cod);
 }
 
+function kp(cls,lbl,val,sub){return`<div class="kp ${cls}"><div class="kl">${lbl}</div><div class="kv">${val}</div><div class="ks">${sub}</div></div>`;}
+
+function secTipo(tipo,hdrCls,icon,k,a){
+  const isAT=tipo==='AT', isEP=tipo==='EP', isTR=tipo==='Tray';
+  const cnt_m  = isAT?k.at_m   : isEP?k.ep_m   : k.tr_m;
+  const dp_m   = isAT?k.at_m_dp: isEP?k.ep_m_dp: k.tr_m_dp;
+  const cnt_a  = isAT?k.at_a   : isEP?k.ep_a   : k.tr_a;
+  const dp_a   = isAT?k.dp_a   : isEP?k.ep_a_dp: k.tr_a_dp;
+  const casos  = isAT?k.casosAT: isEP?k.casosEP: k.casosTR;
+  const trendD = isAT?k.trend  : isEP?k.trendEP: k.trendTR;
+  const col    = isAT?'#13C045': isEP?'#e67e22': '#1a56a0';
+  const colHov = isAT?'#0b6e28': isEP?'#c87000': '#0f3a70';
+  const kpCls  = isAT?'kg'     : isEP?'ko'     : 'kb';
+  const chId   = `hch-${tipo.toLowerCase()}`;
+  const label  = isAT?'Accidentes de Trabajo': isEP?'Enfermedades Profesionales': 'Accidentes de Trayecto';
+
+  return`<div class="stipo">
+    <div class="stipo-hdr ${hdrCls}">${icon} ${label}</div>
+    <div class="stipo-body">
+      <div class="krow2">
+        ${kp(kpCls,`Ingresos ${mc()}`,cnt_m||'0',`Nuevos ${mn()}`)}
+        ${kp('kr',`Días perdidos ${mc()}`,dp_m||'0','Solo CTP ('+mc()+')')}
+        ${kp(kpCls,`Ingresos ${a}`,cnt_a||'0','Acumulado año')}
+        ${kp('kr',`Días perdidos ${a}`,dp_a||'0','Acum. año (CTP)')}
+        ${isAT?kp('kx','Dotación',k.dot,'Archivo Plano'):''}
+        ${isAT?kp('kx','T.Accidentabilidad',k.t_acc+'%','(AT/dot)×100'):''}
+      </div>
+      ${isAT?`<div class="tasas-row">
+        ${kp('kx','T.Frecuencia',k.t_freq,'×1.000.000 HH')}
+        ${kp('kx','T.Gravedad',k.t_grav,'×1.000 HH')}
+        ${kp('kx','T.Siniestralidad',k.t_sin||'—','DP÷CTP (días prom.)')}
+        ${kp(k.ctp_a>0?'kg':'kx','CTP año',k.ctp_a,'Con tratamiento')}
+      </div>`:''}
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card" style="padding:14px">
+          <div class="ch"><span class="ct">Evolución mensual — ${a}</span></div>
+          <div class="cw"><canvas id="${chId}-trend"></canvas></div>
+        </div>
+        <div class="card" style="padding:14px">
+          <div class="ch"><span class="ct">Casos ${mn()} ${a}</span><span class="cm">${cnt_m} siniestro${cnt_m!==1?'s':''}</span></div>
+          ${casos.length?buildCasosTbl(casos):'<p style="color:var(--lite);font-size:.82rem;padding:10px 0">Sin casos en este período</p>'}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildCasosTbl(casos){
+  const c=D.cols;
+  const cols=[c.d_sin,c.d_nom,'_rut',c.d_ctp,c.d_mecan,c.d_fechaP,c.d_fechaI,c.d_fechaA].filter(Boolean);
+  const hdrs=['Siniestro','Nombre','RUT','CTP/STP','Descriptor','Fecha Pres.','Inicio Reposo','Alta'];
+  return buildTbl(casos,cols,hdrs);
+}
+
 function renderHosp(cod){
   const k=D.kpis.find(h=>h.cod===cod);
   if(!k) return;
@@ -645,56 +745,45 @@ function renderHosp(cod){
   g('btn-prev').disabled=idx===0;
   g('btn-next').disabled=idx===n-1;
 
-  // Destruir charts del hospital anterior
-  if(CH.hTipo) CH.hTipo.destroy();
-  if(CH.hTrend) CH.hTrend.destroy();
+  // Destruir charts anteriores
+  ['hTipoAT','hTipoEP','hTipoTR','hTrAT','hTrEP','hTrTR'].forEach(k=>{ if(CH[k]){CH[k].destroy();delete CH[k];} });
 
   const a=an();
+  const diasVal=(v,sfx)=>v==null?'—':v===0?`<span style="color:var(--red);font-weight:900">HOY</span>`:v+'<small style="font-size:.9rem"> '+sfx+'</small>';
+
   g('hosp-body').innerHTML=`
-    <div class="krow">${[
-      `<div class="kp kg"><div class="kl">AT ${mc()}</div><div class="kv">${k.at_m}</div><div class="ks">Accid. trabajo</div></div>`,
-      `<div class="kp ko"><div class="kl">EP ${mc()}</div><div class="kv">${k.ep_m}</div><div class="ks">Enf. profesional</div></div>`,
-      `<div class="kp kb"><div class="kl">Trayecto ${mc()}</div><div class="kv">${k.tr_m}</div><div class="ks">Accid. trayecto</div></div>`,
-      `<div class="kp kx"><div class="kl">Dotación</div><div class="kv">${k.dot}</div><div class="ks">Archivo Plano</div></div>`,
-      `<div class="kp kg"><div class="kl">AT ${a}</div><div class="kv">${k.at_a}</div><div class="ks">Acumulado año</div></div>`,
-      `<div class="kp kr"><div class="kl">Días perdidos ${a}</div><div class="kv">${k.dp_a}</div><div class="ks">Solo AT CTP</div></div>`,
-      `<div class="kp kg"><div class="kl">T.Accidentabilidad</div><div class="kv">${k.t_acc}%</div><div class="ks">(AT/dot)×100</div></div>`,
-      `<div class="kp kx"><div class="kl">T.Frecuencia</div><div class="kv">${k.t_freq}</div><div class="ks">× 1.000.000 HH</div></div>`,
-      `<div class="kp kx"><div class="kl">T.Gravedad</div><div class="kv">${k.t_grav}</div><div class="ks">× 1.000 HH</div></div>`,
-      `<div class="kp kx"><div class="kl">T.Siniestralidad</div><div class="kv">${k.t_sin||'—'}</div><div class="ks">DP / CTP</div></div>`,
-    ].join('')}</div>
-    <div class="g2" style="margin-bottom:14px">
-      <div class="card">
-        <div class="ch"><span class="ct">Tipos de siniestro — ${mc()} ${a}</span></div>
-        <div class="cw"><canvas id="hch-tipo"></canvas></div>
+    <div class="dias-row">
+      <div class="dias-card dias-at">
+        <div class="dias-num">${diasVal(k.dias_at,'d')}</div>
+        <div class="dias-lbl">Desde último AT</div>
+        <div class="dias-sub">${k.at_a} ingresos en ${a}</div>
       </div>
-      <div class="card">
-        <div class="ch"><span class="ct">Evolución AT mensual — ${a}</span></div>
-        <div class="cw"><canvas id="hch-trend"></canvas></div>
+      <div class="dias-card dias-tr">
+        <div class="dias-num">${diasVal(k.dias_tr,'d')}</div>
+        <div class="dias-lbl">Desde último Trayecto</div>
+        <div class="dias-sub">${k.tr_a} ingresos en ${a}</div>
+      </div>
+      <div class="dias-card dias-ep">
+        <div class="dias-num">${diasVal(k.dias_ep,'d')}</div>
+        <div class="dias-lbl">Desde último EP</div>
+        <div class="dias-sub">${k.ep_a} ingresos en ${a}</div>
       </div>
     </div>
-    <div class="card">
-      <div class="ch"><span class="ct">Casos en ${mn()} ${a}</span><span class="cm">${k.casos.length} siniestro${k.casos.length!==1?'s':''}</span></div>
-      ${k.casos.length ? buildTbl(k.casos) : '<p style="color:var(--lite);padding:10px 0;font-size:.85rem">Sin siniestros en este período</p>'}
-    </div>`;
+    ${secTipo('AT','at-hdr','🟢',k,a)}
+    ${secTipo('EP','ep-hdr','🟡',k,a)}
+    ${secTipo('Tray','tr-hdr','🔵',k,a)}`;
 
-  // Chart tipos
-  const tl=Object.keys(k.tipos), tv=tl.map(t=>k.tipos[t]);
-  const tc=tl.map(t=>t.includes('Trabajo')?'#13C045':t.includes('Trayecto')?'#1a56a0':'#e67e22');
-  if(tl.length){
-    CH.hTipo=new Chart(document.getElementById('hch-tipo'),{type:'doughnut',
-      data:{labels:tl,datasets:[{data:tv,backgroundColor:tc,borderWidth:2,borderColor:'#fff'}]},
-      options:{cutout:'60%',plugins:{legend:{position:'bottom',labels:{padding:12,font:{size:11}}}},responsive:true,maintainAspectRatio:false}});
-  } else {
-    document.getElementById('hch-tipo').parentElement.innerHTML='<p style="text-align:center;color:var(--lite);padding:50px 0">Sin datos</p>';
-  }
-
-  // Chart tendencia
-  CH.hTrend=new Chart(document.getElementById('hch-trend'),{type:'bar',
-    data:{labels:MC.slice(1),datasets:[
-      {label:'AT',data:k.trend,backgroundColor:k.trend.map((_,i)=>i+1===me()?'#0b6e28':'#13C045'),borderRadius:5},
-    ]},
-    options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(0,0,0,.04)'}},y:{ticks:{stepSize:1},grid:{color:'rgba(0,0,0,.05)'}}},responsive:true,maintainAspectRatio:false}});
+  // Renderizar charts de tendencia
+  const mkBar=(id,data,col,colHov)=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    return new Chart(el,{type:'bar',
+      data:{labels:MC.slice(1),datasets:[{data,backgroundColor:data.map((_,i)=>i+1===me()?colHov:col),borderRadius:5}]},
+      options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(0,0,0,.04)'}},y:{ticks:{stepSize:1},beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'}}},responsive:true,maintainAspectRatio:false}});
+  };
+  CH.hTrAT=mkBar('hch-at-trend', k.trend,   '#13C045','#0b6e28');
+  CH.hTrEP=mkBar('hch-ep-trend', k.trendEP, '#e67e22','#c87000');
+  CH.hTrTR=mkBar('hch-tray-trend',k.trendTR,'#1a56a0','#0f3a70');
 }
 
 // ── CRUCE ───────────────────────────────────────────────────────────────────
